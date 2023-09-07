@@ -5,6 +5,30 @@ from datetime import date
 from playwright.sync_api import sync_playwright, Page, Playwright, BrowserType
 
 
+def extract_data(active):
+    return [' ' if item.text_content() == '\xa0' else item.text_content() for item in active[1:10]]
+
+
+def add_course_data(table, active, upper_level, middle_level, course_level):
+    # Косяк может быть или в сортровке вложенных данных
+    if upper_level not in table:
+        table[upper_level] = {}
+
+    if middle_level not in table[upper_level]:
+        table[upper_level][middle_level] = {}
+
+    if course_level not in table[upper_level][middle_level]:
+        if middle_level == course_level:
+            table[upper_level][course_level] = {}
+        else:
+            table[upper_level][middle_level][course_level] = []
+
+    if middle_level == course_level:
+        table[upper_level][course_level] = extract_data(active)
+    else:
+        table[upper_level][middle_level][course_level] = extract_data(active)
+
+
 def parse(page: Page, filename):
     table = {}
     upper_level = ''
@@ -12,29 +36,10 @@ def parse(page: Page, filename):
     active_row = '//div[contains(@class, "cell-selected")]/../div[contains(@class, "cell-interactive")]'
     clickable = '//div[contains(@class, "cell-selected")]/../div[1]/div[contains(@class, "clickable")]'
 
-    def extract_data(active):
-        return [' ' if item.text_content() == '\xa0' else item.text_content() for item in active[1:10]]
-
-    def add_course_data(table, active, upper_level, middle_level, course_level):
-        if upper_level not in table:
-            table[upper_level] = {}
-
-        if middle_level not in table[upper_level]:
-            table[upper_level][middle_level] = {}
-
-        if course_level not in table[upper_level][middle_level]:
-            if middle_level == course_level:
-                table[upper_level][course_level] = {}
-            else:
-                table[upper_level][middle_level][course_level] = []
-
-        if middle_level == course_level:
-            table[upper_level][course_level] = extract_data(active)
-        else:
-            table[upper_level][middle_level][course_level] = extract_data(active)
-
     page.locator('.expandableContent').all()[0].click()
 
+    # Пытался отслеживать по активному классу, но почему то каждый раз где то в середине таблицы цикл вылетал.
+    # Так и не понял почему, но если увеличивать таймауты выходит неприлично долгое выполнение.
     row = 0
     if filename == 'first':
         row = 203
@@ -45,10 +50,10 @@ def parse(page: Page, filename):
 
     i = 0
     while True:
-        time.sleep(0.2)
         if i > row:
             break
 
+        # Из за того что не весь контент сразу появляется приходится крутить периодически, что бы кнопки раскрывания находились
         if i % 15 == 0 and 0 < i < row - 10:
             for _ in range(10):
                 page.keyboard.press('ArrowDown')
@@ -57,7 +62,10 @@ def parse(page: Page, filename):
         i += 1
 
         active = page.query_selector_all(active_row)
+
+        # Или косяк где то тут, но тут как будто вряд ли.
         try:
+            # Долго пытался понять как отделить вложенность друг от друга, ничего лучше чем искать кол-во вложенных кнопок расрывания (+) не смог придумать
             if len(page.locator(clickable).all()) > 1:
                 upper_level = active[0].text_content()
                 middle_level = 'Всего'
@@ -98,15 +106,7 @@ def next_page(page: Page, click: int = 1, hierarchy: int = 1):
         hierarchy -= 1
 
 
-def clear_existing_file(*args):
-    for item in args:
-        if os.path.exists(item):
-            os.remove(item)
-
-
-def test_parse():
-    clear_existing_file('table.json')
-
+def test_first_parse():
     playwright = sync_playwright().start()
     browser = playwright.chromium.launch(
         headless=False,
@@ -124,14 +124,48 @@ def test_parse():
     except:
         print('first crush')
 
+    context.close()
+    browser.close()
+    playwright.stop()
+
+
+def xtest_second_parse():
+    playwright = sync_playwright().start()
+    browser = playwright.chromium.launch(
+        headless=False,
+    )
+    context = browser.new_context(record_video_dir="videos/")
+    page = context.new_page()
+
+    page.goto(
+        "https://app.powerbi.com/view?r=eyJrIjoiYzE1NGI1ZWItN2NhYi00MGJlLTllMGQtZDA0MTRhZTI3N2JjIiwidCI6IjhiYzM0YTk5LTYzMWMtNDhlMi04NjM4LTRiMzg0YmFmOTI3MCIsImMiOjl9")
+    page.locator('.canvasFlexBox').wait_for(state='visible')
+
     try:
-        next_page(page, 1, 2)
+        next_page(page, 2, 2)
         parse(page, 'second')
     except:
         print('second crush')
 
+    context.close()
+    browser.close()
+    playwright.stop()
+
+
+def xtest_third_parse():
+    playwright = sync_playwright().start()
+    browser = playwright.chromium.launch(
+        headless=False,
+    )
+    context = browser.new_context(record_video_dir="videos/")
+    page = context.new_page()
+
+    page.goto(
+        "https://app.powerbi.com/view?r=eyJrIjoiYzE1NGI1ZWItN2NhYi00MGJlLTllMGQtZDA0MTRhZTI3N2JjIiwidCI6IjhiYzM0YTk5LTYzMWMtNDhlMi04NjM4LTRiMzg0YmFmOTI3MCIsImMiOjl9")
+    page.locator('.canvasFlexBox').wait_for(state='visible')
+
     try:
-        next_page(page, 1, 2)
+        next_page(page, 3, 2)
         parse(page, 'third')
     except:
         print('third crush')
