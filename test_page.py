@@ -129,7 +129,7 @@ def test_first_parse():
     playwright.stop()
 
 
-def xtest_second_parse():
+def test_second_parse():
     playwright = sync_playwright().start()
     browser = playwright.chromium.launch(
         headless=False,
@@ -152,7 +152,7 @@ def xtest_second_parse():
     playwright.stop()
 
 
-def xtest_third_parse():
+def test_third_parse():
     playwright = sync_playwright().start()
     browser = playwright.chromium.launch(
         headless=False,
